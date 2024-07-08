@@ -21,7 +21,7 @@ struct ResponseData: Decodable {
 struct ContentView: View {
     @State private var addresses: [Address] = []
     @State private var groupedAddresses: [String: [Address]] = [:]
-    
+    @State private var showActionSheet = false
 
     var body: some View {
         NavigationView {
@@ -33,7 +33,13 @@ struct ContentView: View {
                                 Text("Serviço: \(address.servico)")
                                 Text("\(address.endereco)")
                                 Text("\(address.estado) \(address.zip)")
-                                
+                                Button(action: {
+                                    // Ação do botão aqui
+                                    print("Botão pressionado para o endereço: \(address.endereco)")
+                                }) {
+                                    Image(systemName: "star.fill") // Usando um ícone do SF Symbols
+                                                    .foregroundColor(.blue)
+                                }
                                 
                             }
                         }
