@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var addresses: [Address] = []
     @State private var groupedAddresses: [String: [Address]] = [:]
     @State private var showActionSheet = false
+    @State private var selectedAddress: Address?
 
     var body: some View {
         NavigationView {
@@ -29,18 +30,23 @@ struct ContentView: View {
                 ForEach(groupedAddresses.keys.sorted(), id: \.self) { city in
                     Section(header: Text(city)) {
                         ForEach(groupedAddresses[city]!) { address in
-                            VStack(alignment: .leading) {
-                                Text("Serviço: \(address.servico)")
-                                Text("\(address.endereco)")
-                                Text("\(address.estado) \(address.zip)")
-                                Button(action: {
-                                    // Ação do botão aqui
-                                    print("Botão pressionado para o endereço: \(address.endereco)")
-                                }) {
-                                    Image(systemName: "star.fill") // Usando um ícone do SF Symbols
-                                                    .foregroundColor(.blue)
+                            ZStack(alignment: .leading) {
+                                Rectangle()
+                                    .foregroundColor(.clear)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        selectedAddress = address
+                                        showActionSheet = true
+                                    }
+                                VStack(alignment: .leading) {
+//                                    Text("Serviço: \(address.servico)")
+                                    Text(address.endereco)
+                                    Spacer() // Adicionando um Spacer para garantir que o VStack ocupe o máximo de espaço possível
                                 }
-                                
+                                .padding(.top, 10) // Adiciona padding adicional no topo
+//                                .background(Color.white)
+//                                .cornerRadius(8)
+//                                .shadow(radius: 2)
                             }
                         }
                     }
@@ -59,6 +65,20 @@ struct ContentView: View {
                         print("-----> Failed to fetch addresses: \(error.localizedDescription)")
                     }
                 }
+            }
+            .actionSheet(isPresented: $showActionSheet) {
+                ActionSheet(title: Text("Escolha uma opção"), buttons: [
+                    .default(Text("Take a picure")) {
+                        print("Opção 1 selecionada para \(selectedAddress?.endereco ?? "")")
+                    },
+                    .default(Text("Delete")) {
+                        print("Opção 2 selecionada para \(selectedAddress?.endereco ?? "")")
+                    },
+                    .default(Text("Maps")) {
+                        print("Opção 3 selecionada para \(selectedAddress?.endereco ?? "")")
+                    },
+                    .cancel()
+                ])
             }
         }
     }
