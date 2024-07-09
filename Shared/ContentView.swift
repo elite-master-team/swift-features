@@ -16,6 +16,21 @@ struct Address: Identifiable, Decodable {
 
 struct ResponseData: Decodable {
     let enderecos: [Address]
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let enderecosList = try? container.decode([Address].self, forKey: .enderecos) {
+            self.enderecos = enderecosList
+        } else if let enderecosDict = try? container.decode([String: Address].self, forKey: .enderecos) {
+            self.enderecos = Array(enderecosDict.values)
+        } else {
+            throw DecodingError.dataCorruptedError(forKey: .enderecos, in: container, debugDescription: "Formato de dados inesperado.")
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enderecos
+    }
 }
 
 struct ContentView: View {
@@ -23,30 +38,44 @@ struct ContentView: View {
     @State private var groupedAddresses: [String: [Address]] = [:]
     @State private var showActionSheet = false
     @State private var selectedAddress: Address?
+    @State private var selectedDate = Date()
 
     var body: some View {
         NavigationView {
-            List {
-                ForEach(groupedAddresses.keys.sorted(), id: \.self) { city in
-                    Section(header: Text(city)) {
-                        ForEach(groupedAddresses[city]!) { address in
-                            ZStack(alignment: .leading) {
-                                Rectangle()
-                                    .foregroundColor(.clear)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        selectedAddress = address
-                                        showActionSheet = true
+            VStack {
+                DatePicker("Select a date", selection: $selectedDate, displayedComponents: .date)
+                    .datePickerStyle(CompactDatePickerStyle())
+                    .onChange(of: selectedDate, perform: { date in
+                        fetchAddresses(for: date) { result in
+                            switch result {
+                            case .success(let fetchedAddresses):
+                                self.addresses = fetchedAddresses
+                                self.groupAddressesByCity()
+                            case .failure(let error):
+                                print("Failed to fetch addresses: \(error.localizedDescription)")
+                            }
+                        }
+                    })
+                    .padding()
+
+                List {
+                    ForEach(groupedAddresses.keys.sorted(), id: \.self) { city in
+                        Section(header: Text(city)) {
+                            ForEach(groupedAddresses[city]!) { address in
+                                ZStack(alignment: .leading) {
+                                    Rectangle()
+                                        .foregroundColor(.clear)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            selectedAddress = address
+                                            showActionSheet = true
+                                        }
+                                    VStack(alignment: .leading) {
+                                        Text(address.endereco)
+                                        Spacer() // Adicionando um Spacer para garantir que o VStack ocupe o máximo de espaço possível
                                     }
-                                VStack(alignment: .leading) {
-//                                    Text("Serviço: \(address.servico)")
-                                    Text(address.endereco)
-                                    Spacer() // Adicionando um Spacer para garantir que o VStack ocupe o máximo de espaço possível
+                                    .padding(.top, 10) // Adiciona padding adicional no topo
                                 }
-                                .padding(.top, 10) // Adiciona padding adicional no topo
-//                                .background(Color.white)
-//                                .cornerRadius(8)
-//                                .shadow(radius: 2)
                             }
                         }
                     }
@@ -54,21 +83,19 @@ struct ContentView: View {
             }
             .navigationTitle("Lista de Endereços")
             .onAppear {
-                fetchAddresses { result in
+                fetchAddresses(for: selectedDate) { result in
                     switch result {
                     case .success(let fetchedAddresses):
-                        print("----> sucesso")
                         self.addresses = fetchedAddresses
                         self.groupAddressesByCity()
-                        print("==> " + fetchedAddresses.map { "\($0.endereco), \($0.cidade), \($0.estado), \($0.zip)" }.joined(separator: "\n"))
                     case .failure(let error):
-                        print("-----> Failed to fetch addresses: \(error.localizedDescription)")
+                        print("Failed to fetch addresses: \(error.localizedDescription)")
                     }
                 }
             }
             .actionSheet(isPresented: $showActionSheet) {
                 ActionSheet(title: Text("Escolha uma opção"), buttons: [
-                    .default(Text("Take a picure")) {
+                    .default(Text("Take a picture")) {
                         print("Opção 1 selecionada para \(selectedAddress?.endereco ?? "")")
                     },
                     .default(Text("Delete")) {
@@ -94,9 +121,16 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 
-func fetchAddresses(completion: @escaping (Result<[Address], Error>) -> Void) {
-    guard let url = URL(string: "https://pwms.com.br/backends/invoices-v3/public/buscarRotaGeraisEdicaoV2?data=2024-07-7") else {
+func fetchAddresses(for date: Date, completion: @escaping (Result<[Address], Error>) -> Void) {
+    let dateFormatter = DateFormatter()
+    dateFormatter.dateFormat = "yyyy-MM-dd"
+    let dateString = dateFormatter.string(from: date)
+    
+    guard let url = URL(string: "https://pwms.com.br/backends/invoices-v3/public/buscarRotaGeraisEdicaoV2?data=\(dateString)") else {
         print("URL inválida.")
+        
+        //http://127.0.0.1:8000/teste.json
+        //https://pwms.com.br/backends/invoices-v3/public/buscarRotaGeraisEdicaoV2?data=\(dateString)"
         return
     }
 
@@ -124,8 +158,14 @@ func fetchAddresses(completion: @escaping (Result<[Address], Error>) -> Void) {
         }
 
         do {
+            print("dateString: \(dateString)")
+            print("URL: \(url)")
+            
+            let jsonString = String(data: data, encoding: .utf8) ?? "Dados inválidos"
+            //print("Dados JSON recebidos: \(jsonString)")
+            
             let responseData = try JSONDecoder().decode(ResponseData.self, from: data)
-            print("Dados JSON recebidos e decodificados com sucesso: \(responseData.enderecos)")
+            //print("Dados JSON decodificados com sucesso: \(responseData.enderecos)")
             completion(.success(responseData.enderecos))
         } catch {
             print("Erro ao decodificar dados JSON: \(error.localizedDescription)")
