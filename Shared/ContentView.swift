@@ -5,7 +5,7 @@ struct Address: Identifiable, Decodable {
     let endereco: String
     let cidade: String
     let estado: String
-    let zip: String? // Campo opcional
+    let zip: String?
     let servico: String
     let frequencia: String
 
@@ -39,25 +39,39 @@ struct ContentView: View {
     @State private var showActionSheet = false
     @State private var selectedAddress: Address?
     @State private var selectedDate = Date()
-    @Environment(\.dismiss) private var dismiss // Para fechar o calendário
+    @State private var showDatePicker = false // Adicione a variável de estado para controlar a exibição do DatePicker
+    @Environment(\.presentationMode) private var presentationMode
 
     var body: some View {
         NavigationView {
             VStack {
-                DatePicker("Select a date", selection: $selectedDate, displayedComponents: .date)
-                    .datePickerStyle(CompactDatePickerStyle())
-                    .onChange(of: selectedDate, perform: { date in
-                        fetchAddresses(for: date) { result in
-                            switch result {
-                            case .success(let fetchedAddresses):
-                                self.addresses = fetchedAddresses
-                                self.groupAddressesByCity()
-                                dismiss() // Fecha o calendário após a seleção da data
-                            case .failure(let error):
-                                print("Failed to fetch addresses: \(error.localizedDescription)")
+                // Adicione um botão para abrir o DatePicker
+                Button(action: {
+                    showDatePicker.toggle()
+                }) {
+                    Text("Select a date")
+                }
+                .sheet(isPresented: $showDatePicker) {
+                    DatePicker("Select a date", selection: $selectedDate, displayedComponents: .date)
+                        .datePickerStyle(GraphicalDatePickerStyle())
+                        .onChange(of: selectedDate) { date in
+                            fetchAddresses(for: date) { result in
+                                switch result {
+                                case .success(let fetchedAddresses):
+                                    self.addresses = fetchedAddresses
+                                    self.groupAddressesByCity()
+                                    // Feche o DatePicker ao selecionar uma data
+                                    showDatePicker = false
+                                case .failure(let error):
+                                    print("Failed to fetch addresses: \(error.localizedDescription)")
+                                }
                             }
                         }
-                    })
+                        .padding()
+                }
+                
+                // Adicione este código para mostrar a data selecionada
+                Text("Selected Date: \(selectedDate, formatter: dateFormatter)")
                     .padding()
 
                 List {
@@ -100,11 +114,8 @@ struct ContentView: View {
                     .default(Text("Take a picture")) {
                         print("Opção 1 selecionada para \(selectedAddress?.endereco ?? "")")
                     },
-                    .default(Text("Delete")) {
-                        print("Opção 2 selecionada para \(selectedAddress?.endereco ?? "")")
-                    },
                     .default(Text("Maps")) {
-                        print("Opção 3 selecionada para \(selectedAddress?.endereco ?? "")")
+                        print("Opção 2 selecionada para \(selectedAddress?.endereco ?? "")")
                     },
                     .cancel()
                 ])
@@ -123,6 +134,13 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 
+private let dateFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    return formatter
+}()
+
+
 func fetchAddresses(for date: Date, completion: @escaping (Result<[Address], Error>) -> Void) {
     let dateFormatter = DateFormatter()
     dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -130,9 +148,6 @@ func fetchAddresses(for date: Date, completion: @escaping (Result<[Address], Err
     
     guard let url = URL(string: "https://pwms.com.br/backends/invoices-v3/public/buscarRotaGeraisEdicaoV2?data=\(dateString)") else {
         print("URL inválida.")
-        
-        //http://127.0.0.1:8000/teste.json
-        //https://pwms.com.br/backends/invoices-v3/public/buscarRotaGeraisEdicaoV2?data=\(dateString)"
         return
     }
 
