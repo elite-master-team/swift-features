@@ -1,4 +1,40 @@
 import SwiftUI
+import UIKit
+
+struct ImagePicker: UIViewControllerRepresentable {
+    class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+        let parent: ImagePicker
+
+        init(parent: ImagePicker) {
+            self.parent = parent
+        }
+
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+            if let uiImage = info[.originalImage] as? UIImage {
+                parent.image = uiImage
+            }
+
+            parent.presentationMode.wrappedValue.dismiss()
+        }
+    }
+
+    @Environment(\.presentationMode) var presentationMode
+    @Binding var image: UIImage?
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.delegate = context.coordinator
+        picker.sourceType = .camera
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+}
+
 
 struct Address: Identifiable, Decodable {
     let id = UUID()
@@ -39,39 +75,25 @@ struct ContentView: View {
     @State private var showActionSheet = false
     @State private var selectedAddress: Address?
     @State private var selectedDate = Date()
-    @State private var showDatePicker = false // Adicione a variável de estado para controlar a exibição do DatePicker
-    @Environment(\.presentationMode) private var presentationMode
+    @State private var showImagePicker = false
+    @State private var selectedImage: UIImage?
 
     var body: some View {
         NavigationView {
             VStack {
-                // Adicione um botão para abrir o DatePicker
-                Button(action: {
-                    showDatePicker.toggle()
-                }) {
-                    Text("Select a date")
-                }
-                .sheet(isPresented: $showDatePicker) {
-                    DatePicker("Select a date", selection: $selectedDate, displayedComponents: .date)
-                        .datePickerStyle(GraphicalDatePickerStyle())
-                        .onChange(of: selectedDate) { date in
-                            fetchAddresses(for: date) { result in
-                                switch result {
-                                case .success(let fetchedAddresses):
-                                    self.addresses = fetchedAddresses
-                                    self.groupAddressesByCity()
-                                    // Feche o DatePicker ao selecionar uma data
-                                    showDatePicker = false
-                                case .failure(let error):
-                                    print("Failed to fetch addresses: \(error.localizedDescription)")
-                                }
+                DatePicker("Select a date", selection: $selectedDate, displayedComponents: .date)
+                    .datePickerStyle(CompactDatePickerStyle())
+                    .onChange(of: selectedDate, perform: { date in
+                        fetchAddresses(for: date) { result in
+                            switch result {
+                            case .success(let fetchedAddresses):
+                                self.addresses = fetchedAddresses
+                                self.groupAddressesByCity()
+                            case .failure(let error):
+                                print("Failed to fetch addresses: \(error.localizedDescription)")
                             }
                         }
-                        .padding()
-                }
-                
-                // Adicione este código para mostrar a data selecionada
-                Text("Selected Date: \(selectedDate, formatter: dateFormatter)")
+                    })
                     .padding()
 
                 List {
@@ -88,9 +110,9 @@ struct ContentView: View {
                                         }
                                     VStack(alignment: .leading) {
                                         Text(address.endereco)
-                                        Spacer() // Adicionando um Spacer para garantir que o VStack ocupe o máximo de espaço possível
+                                        Spacer()
                                     }
-                                    .padding(.top, 10) // Adiciona padding adicional no topo
+                                    .padding(.top, 10)
                                 }
                             }
                         }
@@ -112,34 +134,48 @@ struct ContentView: View {
             .actionSheet(isPresented: $showActionSheet) {
                 ActionSheet(title: Text("Escolha uma opção"), buttons: [
                     .default(Text("Take a picture")) {
-                        print("Opção 1 selecionada para \(selectedAddress?.endereco ?? "")")
+                        showImagePicker = true
+                    },
+                    .default(Text("Delete")) {
+                        print("Opção 2 selecionada para \(selectedAddress?.endereco ?? "")")
                     },
                     .default(Text("Maps")) {
-                        print("Opção 2 selecionada para \(selectedAddress?.endereco ?? "")")
+                        print("Opção 3 selecionada para \(selectedAddress?.endereco ?? "")")
                     },
                     .cancel()
                 ])
             }
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(image: $selectedImage)
+                    .onDisappear {
+                        if let image = selectedImage {
+                            if let url = URL(string: "https://your-api-endpoint.com/upload") {
+                                uploadImage(image, to: url) { result in
+                                    switch result {
+                                    case .success:
+                                        print("Image uploaded successfully")
+                                    case .failure(let error):
+                                        print("Failed to upload image: \(error.localizedDescription)")
+                                    }
+                                }
+                            }
+                        }
+                    }
+            }
         }
     }
-    
+
     private func groupAddressesByCity() {
         groupedAddresses = Dictionary(grouping: addresses, by: { $0.cidade })
     }
 }
+
 
 struct ContentView_Previews: PreviewProvider {
     static var previews: some View {
         ContentView()
     }
 }
-
-private let dateFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateStyle = .medium
-    return formatter
-}()
-
 
 func fetchAddresses(for date: Date, completion: @escaping (Result<[Address], Error>) -> Void) {
     let dateFormatter = DateFormatter()
@@ -191,4 +227,43 @@ func fetchAddresses(for date: Date, completion: @escaping (Result<[Address], Err
     }
 
     task.resume()
+}
+
+func uploadImage(_ image: UIImage, to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+    guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+        completion(.failure(NSError(domain: "ImageConversionError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to data"])))
+        return
+    }
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    
+    let boundary = UUID().uuidString
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+    
+    var body = Data()
+    body.append("--\(boundary)\r\n".data(using: .utf8)!)
+    body.append("Content-Disposition: form-data; name=\"file\"; filename=\"image.jpg\"\r\n".data(using: .utf8)!)
+    body.append("Content-Type: image/jpeg\r\n\r\n".data(using: .utf8)!)
+    body.append(imageData)
+    body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+    request.httpBody = body
+    
+    URLSession.shared.dataTask(with: request) { data, response, error in
+        if let error = error {
+            completion(.failure(error))
+            return
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            let responseError = NSError(domain: "", code: (response as? HTTPURLResponse)?.statusCode ?? 500, userInfo: [NSLocalizedDescriptionKey: "Server error"])
+            completion(.failure(responseError))
+            return
+        }
+
+        completion(.success(()))
+    }.resume()
 }
