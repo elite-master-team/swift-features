@@ -5,7 +5,7 @@ struct Address: Identifiable, Decodable {
     let endereco: String
     let cidade: String
     let estado: String
-    let zip: String
+    let zip: String? // Campo opcional
     let servico: String
     let frequencia: String
 
@@ -39,6 +39,7 @@ struct ContentView: View {
     @State private var showActionSheet = false
     @State private var selectedAddress: Address?
     @State private var selectedDate = Date()
+    @Environment(\.dismiss) private var dismiss // Para fechar o calendário
 
     var body: some View {
         NavigationView {
@@ -51,6 +52,7 @@ struct ContentView: View {
                             case .success(let fetchedAddresses):
                                 self.addresses = fetchedAddresses
                                 self.groupAddressesByCity()
+                                dismiss() // Fecha o calendário após a seleção da data
                             case .failure(let error):
                                 print("Failed to fetch addresses: \(error.localizedDescription)")
                             }
