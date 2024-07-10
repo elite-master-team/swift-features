@@ -149,13 +149,14 @@ struct ContentView: View {
                 ImagePicker(image: $selectedImage)
                     .onDisappear {
                         if let image = selectedImage {
-                            if let url = URL(string: "https://your-api-endpoint.com/upload") {
+                            print("selectedImage...")
+                            if let url = URL(string: "https://pwms.com.br/backends/invoices-v3/public/api/upload-image") {
                                 uploadImage(image, to: url) { result in
                                     switch result {
                                     case .success:
                                         print("Image uploaded successfully")
                                     case .failure(let error):
-                                        print("Failed to upload image: \(error.localizedDescription)")
+                                        print("====>>>>  Failed to upload image: \(error.localizedDescription)")
                                     }
                                 }
                             }
@@ -229,15 +230,23 @@ func fetchAddresses(for date: Date, completion: @escaping (Result<[Address], Err
     task.resume()
 }
 
+func convertHEICToJPEG(image: UIImage) -> UIImage? {
+    guard let cgImage = image.cgImage else { return nil }
+    let uiImage = UIImage(cgImage: cgImage)
+    return uiImage
+}
+
 func uploadImage(_ image: UIImage, to url: URL, completion: @escaping (Result<Void, Error>) -> Void) {
-    guard let imageData = image.jpegData(compressionQuality: 0.8) else {
+    // Convert HEIC image to JPEG if needed
+    let convertedImage = convertHEICToJPEG(image: image) ?? image
+    
+    guard let imageData = convertedImage.jpegData(compressionQuality: 0.8) else {
         completion(.failure(NSError(domain: "ImageConversionError", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to data"])))
         return
     }
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     
     let boundary = UUID().uuidString
     request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
@@ -250,6 +259,17 @@ func uploadImage(_ image: UIImage, to url: URL, completion: @escaping (Result<Vo
     body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
     request.httpBody = body
+    
+    // Print the URL, headers, and body
+    print("URL: \(request.url?.absoluteString ?? "No URL")")
+    print("Headers: \(request.allHTTPHeaderFields ?? [:])")
+    
+    // Print body in a readable format
+    if let bodyString = String(data: body, encoding: .utf8) {
+        print("Body (as string): \(bodyString)")
+    } else {
+        print("Body (binary data): \(body as NSData)")
+    }
     
     URLSession.shared.dataTask(with: request) { data, response, error in
         if let error = error {
